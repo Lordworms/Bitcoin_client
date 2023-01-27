@@ -15,19 +15,19 @@ pub struct UtxoOutput
     pub address:H256,//the address of the recipent
     pub value:u32
 }
-#[derive(Serialize, Deserialize, Debug, Default,Clone)]
+#[derive(Serialize, Deserialize,Debug,Default,Clone)]
 pub struct Transaction 
 {
    pub input:Vec<UtxoInput>,
    pub output:Vec<UtxoOutput>,//transaction input and output
 }
-#[derive(Clone)]
+#[derive(Serialize, Deserialize, Debug,Default,Clone)]
 pub struct SignedTransaction
 {
     pub trans:Transaction,
     pub sig:Vec<u8>,
 }
-impl Hashable for Transaction 
+impl Hashable for SignedTransaction 
 {
     fn hash(&self) -> H256 {
         let bytes = bincode::serialize(&self).unwrap();

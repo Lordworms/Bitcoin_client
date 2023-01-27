@@ -6,7 +6,7 @@
 use serde::{Serialize, Deserialize};
 use crate::crypto::hash::{H256, Hashable};
 use crate::transaction::SignedTransaction as Transaction;
-
+use std::time::{SystemTime};
 /// The block header
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Header {
@@ -89,7 +89,7 @@ pub mod test {
     use super::*;
     use crate::crypto::hash::H256;
     use crate::crypto::merkle::MerkleTree;
-
+    
     pub fn generate_random_block(parent: &H256) -> Block {
         let transactions: Vec<Transaction> = vec![Default::default()];
         let root = MerkleTree::new(&transactions).root();
@@ -97,7 +97,7 @@ pub mod test {
             parent: *parent,
             nonce: rand::random(),
             difficulty: default_difficulty().into(),
-            timestamp: rand::random(),
+            timestamp: SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).expect("Time went backwards").as_millis(),
             merkle_root: root,
         };
         let content = Content { transactions };

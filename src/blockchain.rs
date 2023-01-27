@@ -3,38 +3,146 @@
 //! You need to implement the `Blockchain` struct and its methods.
 
 use crate::block::Block;
-use crate::crypto::hash::H256;
-use std::collections::HashMap;
-
+use crate::crypto::hash::{H256, Hashable};
+use std::collections::{HashMap, VecDeque};
+use std::time::{SystemTime};
 pub struct Blockchain {
-    // TODO: add fields here as you need, e.g.:
-    //
-    // hash_to_block: HashMap<H256, Block>,
+    pub chains:HashMap<H256,Block>,
+    pub heights:HashMap<H256,u8>,
+    pub buffers:HashMap<H256,Block>,
+    pub hash_tip:H256,
+    pub total_delay:u128,
 }
 
 impl Blockchain {
     /// Create a new blockchain, only containing the genesis block
     pub fn new() -> Self {
-        // TODO
+        let genis=Block::genesis();
+        let hash=genis.hash();
+        let mut chainMap:HashMap<H256,Block>=HashMap::new();
+        chainMap.insert(hash, genis);
+        let mut heightsMap:HashMap<H256,u8>=HashMap::new();
+        heightsMap.insert(hash,0);
+        let bufferMap:HashMap<H256, Block>=HashMap::new();
         Blockchain {
-            // TODO
+            chains:chainMap,
+            heights:heightsMap,
+            buffers:bufferMap,
+            hash_tip:hash,
+            total_delay:0
         }
     }
+    pub fn insert_block(&mut self,block:&Block)
+    {
+        
+        let bhash=block.hash();
+        //adjust the height and tips
+        let now_height=self.heights[&block.header.parent]+1;
+        self.heights.insert(bhash, now_height);
+        if now_height > self.heights[&self.hash_tip]
+        {
+            println!("now height is {},tip height is {}",now_height,self.heights[&self.hash_tip]);
+            println!("the hash is {:?} and the difficulty is {:?}",block.header.difficulty,self.hash_tip);
+            self.hash_tip=bhash;
+        }
+        //insert into the chains
+        self.chains.insert(bhash, block.clone());
+        
+        //adding the delay time
+        let base_time=SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis();
+        let delay=base_time-block.header.timestamp;
+        self.total_delay+=delay;
 
+    }
     /// Insert a block into blockchain
-    pub fn insert(&mut self, block: &Block) {
-        unimplemented!()
+    pub fn insert(&mut self, block: &Block) 
+    {
+        let bhash=block.hash();
+        match self.chains.get(&block.header.parent) {
+            Some(b)=>
+            {
+                if !self.chains.contains_key(&bhash)
+                {
+                    self.insert_block(&block);
+                    
+                    //insert stale block (due to latency)
+                    let mut remove_array:Vec<H256>=Vec::new();
+                    let mut q:VecDeque<H256>=VecDeque::new();
+                    q.push_back(bhash);
+                    while !q.is_empty()
+                    {
+                        match q.pop_front()
+                        {
+                            Some(h)=>
+                            {
+                                for (bhash,blk) in self.buffers.iter()
+                                {
+                                    if blk.header.parent==h
+                                    {
+                                        //making copy and adding into chains
+                                        let hash_copy=*bhash;
+                                        remove_array.push(hash_copy);
+                                        self.chains.insert(hash_copy, blk.clone());
+
+                                        //adding delay
+                                        let base_time=SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis();
+                                        let delay=base_time-blk.header.timestamp;
+                                        self.total_delay+=delay;
+
+                                        //adding height and replace tips
+                                        let now_height=self.heights[&blk.header.parent]+1;
+                                        self.heights.insert(hash_copy, now_height);
+                                        if now_height>self.heights[&self.hash_tip]
+                                        {
+                                            println!("now height is {},tip height is {}",now_height,self.heights[&self.hash_tip]);
+                                            self.hash_tip=hash_copy;
+                                        }
+                                    }
+                                }
+                            },
+                            None=>()
+                        }
+                    }
+                    for hash in remove_array
+                    {
+                        self.buffers.remove(&hash);
+                    }
+                    println!("insert success!\n");
+                }
+                else  
+                {
+                    println!("insert fail!\n");    
+                    println!("the hash is {:?} and the difficulty is {:?}",block.header.difficulty,self.hash_tip);
+                }
+            },
+            _=>
+            {
+                if !self.chains.contains_key(&bhash)
+                {
+                    self.buffers.insert(bhash, block.clone());
+                }
+            },
+        }
     }
 
     /// Get the last block's hash of the longest chain
     pub fn tip(&self) -> H256 {
-        unimplemented!()
+        self.hash_tip
     }
 
     /// Get the last block's hash of the longest chain
     #[cfg(any(test, test_utilities))]
     pub fn all_blocks_in_longest_chain(&self) -> Vec<H256> {
-        unimplemented!()
+        let mut now=self.hash_tip;
+        let mut buf: [u8; 32] = [0; 32];
+        let mut res:Vec<H256>=vec![];
+        let end=buf.into();
+        while now!=end
+        {
+            res.push(now);
+            now=self.chains[&now].header.parent;
+        }
+        res
     }
 }
 
