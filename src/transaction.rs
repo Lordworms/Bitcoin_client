@@ -4,22 +4,22 @@ use ring::digest::{digest,SHA256};
 use crate::crypto::hash::{H256, Hashable};
 use rand::Rng;
 #[derive(Serialize, Deserialize, Debug, Default,Clone, Eq, PartialEq, Hash)]
-pub struct MsgInput
+pub struct UtxoInput
 {
     pub hash:H256,
-    pub index:u8
+    pub index:u8,
 }
 #[derive(Serialize, Deserialize, Debug, Clone,Copy)]
-pub struct MsgOutput
+pub struct UtxoOutput
 {
-    pub address:H256,
+    pub address:H256,//the address of the recipent
     pub value:u32
 }
 #[derive(Serialize, Deserialize, Debug, Default,Clone)]
 pub struct Transaction 
 {
-   pub input:Vec<MsgInput>,
-   pub output:Vec<MsgOutput>,
+   pub input:Vec<UtxoInput>,
+   pub output:Vec<UtxoOutput>,//transaction input and output
 }
 #[derive(Clone)]
 pub struct SignedTransaction
@@ -27,15 +27,13 @@ pub struct SignedTransaction
     pub trans:Transaction,
     pub sig:Vec<u8>,
 }
-impl Hashable for Transaction
+impl Hashable for Transaction 
 {
-    fn hash(&self)->H256
-    {
-        let serialized_data=bincode::serialize(&self).unwrap();
-        return digest(&SHA256,&serialized_data).into();
+    fn hash(&self) -> H256 {
+        let bytes = bincode::serialize(&self).unwrap();
+        ring::digest::digest(&ring::digest::SHA256, &bytes).into()
     }
 }
-
 /// Create digital signature of a transaction
 pub fn sign(t: &Transaction, key: &Ed25519KeyPair) -> Signature {
     let bytes=bincode::serialize(&t).unwrap();
@@ -62,8 +60,8 @@ mod tests {
     use crate::crypto::key_pair;
 
     pub fn generate_random_transaction() -> Transaction {
-       let input=vec![MsgInput{hash:generate_random_hash(),index:0}];
-       let output=vec![MsgOutput{address:generate_random_hash(),value:0}];
+       let input=vec![UtxoInput{hash:generate_random_hash(),index:0}];
+       let output=vec![UtxoOutput{address:generate_random_hash(),value:0}];
        Transaction { input: input, output: (output) }
     }
 

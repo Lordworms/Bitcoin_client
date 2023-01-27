@@ -73,22 +73,22 @@ impl MerkleTree {
     pub fn proof(&self, index: usize) -> Vec<H256> {// data at index has proof of 
         let mut proof:Vec<H256>=Vec::new();
         let mut now=&self.root;
-        let mut step=1;
+        let mut cnt=1usize<<(self.level_count-1);
         let mut i=index;
-        while step<self.level_count
+        while cnt>1
         {
-            if i&1==0
+            if i<cnt/2
             {
                 proof.push(now.right.as_ref().unwrap().hash);
-                now=now.left.as_ref().unwrap();
+                now=&now.left.as_ref().unwrap();
             }
             else 
-            {
+            {    
+                i-=cnt/2;
                 proof.push(now.left.as_ref().unwrap().hash);
-                now=now.right.as_ref().unwrap();
+                now=&now.right.as_ref().unwrap();
             }
-            step+=1;
-            i>>=1;
+            cnt>>=1;
         }
         proof
     }
@@ -97,33 +97,36 @@ impl MerkleTree {
 /// Verify that the datum hash with a vector of proofs will produce the Merkle root. Also need the
 /// index of datum and `leaf_size`, the total number of leaves.
 pub fn verify(root: &H256, datum: &H256, proof: &[H256], index: usize, leaf_size: usize) -> bool {
-    let mut size=0;
-    let mut ls=leaf_size;
-    while ls>0
+    let mut step=0;
+    while(1usize<<step)<leaf_size
     {
-        ls>>=1;
-        size+=1;
+        step+=1;
     }
-    if size!=(proof.len()+1)
+    if step!=proof.len()
     {
         return false
     }
-    let mut ans=H256::from(*datum);
-    let mut cnt=index;
-    for i in (0..proof.len()).rev()
+    let mut now=H256::from(*datum);
+    let mut i=index;
+    let mut j=proof.len()-1;
+    loop 
     {
-        println!("i is {}",i);
-        if cnt&1==0
+        if i%2==0
         {
-            ans=hash_children(&ans, &proof[i]);
+            now=hash_children(&now, &proof[j]);
         }
         else 
         {
-            ans=hash_children(&proof[i], &ans);
+            now=hash_children(&proof[j], &now);    
         }
-        cnt>>=1;
+        i>>=1;
+        if j==0
+        {
+            break;
+        }
+        j-=1;
     }
-    root.hash()==ans.hash()
+    root.hash()==now.hash()
 }
 
 #[cfg(test)]
