@@ -142,6 +142,7 @@ impl Blockchain {
             res.push(now);
             now=self.chains[&now].header.parent;
         }
+        res.reverse();
         res
     }
 }
@@ -202,6 +203,9 @@ mod tests {
         let block_5 = generate_random_block(&block_4.hash());
         blockchain.insert(&block_5);
         assert_eq!(blockchain.tip(), block_5.hash());
+        let block_6=generate_random_block(&block_1.hash());
+        blockchain.insert(&block_6);
+        assert_eq!(blockchain.tip(),block_5.hash());
     }
 
 }
