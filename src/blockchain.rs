@@ -50,7 +50,15 @@ impl Blockchain {
         
         //adding the delay time
         let base_time=SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis();
-        let delay=base_time-block.header.timestamp;
+        let delay;
+        if base_time>block.header.timestamp
+        {
+            delay=base_time-block.header.timestamp;
+        }
+        else 
+        {
+            delay=0;
+        }
         self.total_delay+=delay;
 
     }
@@ -86,7 +94,15 @@ impl Blockchain {
 
                                         //adding delay
                                         let base_time=SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis();
-                                        let delay=base_time-blk.header.timestamp;
+                                        let delay;
+                                        if base_time>blk.header.timestamp
+                                        {
+                                            delay=base_time-blk.header.timestamp;
+                                        }
+                                        else 
+                                        {
+                                            delay=0;
+                                        }
                                         self.total_delay+=delay;
 
                                         //adding height and replace tips

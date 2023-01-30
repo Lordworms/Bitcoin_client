@@ -97,7 +97,8 @@ pub mod test {
             parent: *parent,
             nonce: rand::random(),
             difficulty: default_difficulty().into(),
-            timestamp: SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).expect("Time went backwards").as_millis(),
+            timestamp:rand::random(),
+            //timestamp: SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).expect("Time went backwards").as_millis(),
             merkle_root: root,
         };
         let content = Content { transactions };
