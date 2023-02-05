@@ -3,6 +3,7 @@ use ring::signature::{Ed25519KeyPair, Signature, KeyPair, VerificationAlgorithm,
 use ring::digest::{digest,SHA256};
 use crate::crypto::hash::{H256, Hashable};
 use rand::Rng;
+use crate::crypto::key_pair;
 #[derive(Serialize, Deserialize, Debug, Default,Clone, Eq, PartialEq, Hash)]
 pub struct UtxoInput
 {
@@ -54,17 +55,21 @@ pub fn generate_random_hash() -> H256 {
     raw_bytes.copy_from_slice(&random_bytes);
     (&raw_bytes).into()
 }
+pub fn generate_random_transaction() -> Transaction {
+    let input=vec![UtxoInput{hash:generate_random_hash(),index:0}];
+    let output=vec![UtxoOutput{address:generate_random_hash(),value:0}];
+    Transaction { input: input, output: (output) }
+ }
+ pub fn generate_random_signed_transaction()->SignedTransaction{
+     let t = generate_random_transaction();
+     let key=key_pair::random();
+     let sig=sign(&t,&key);
+     SignedTransaction { trans: (t), sig: (sig.as_ref().to_vec()) }
+ }
 #[cfg(any(test, test_utilities))]
 mod tests {
     use super::*;
-    use crate::crypto::key_pair;
-
-    pub fn generate_random_transaction() -> Transaction {
-       let input=vec![UtxoInput{hash:generate_random_hash(),index:0}];
-       let output=vec![UtxoOutput{address:generate_random_hash(),value:0}];
-       Transaction { input: input, output: (output) }
-    }
-
+    
     #[test]
     fn sign_verify() {
         let t = generate_random_transaction();

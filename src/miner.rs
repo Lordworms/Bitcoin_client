@@ -1,10 +1,14 @@
+use crate::blockchain;
+use crate::crypto::hash::{H256, Hashable};
 use crate::network::server::Handle as ServerHandle;
-
+use std::sync::{Arc, Mutex};
 use log::info;
-
+use rand::Rng;
+use crate::block::{Content, Header, Block};
+use crate::transaction::{generate_random_signed_transaction, SignedTransaction};
+use crate::blockchain::Blockchain;
 use crossbeam::channel::{unbounded, Receiver, Sender, TryRecvError};
 use std::time;
-
 use std::thread;
 
 enum ControlSignal {
@@ -20,9 +24,11 @@ enum OperatingState {
 
 pub struct Context {
     /// Channel for receiving control signal
+    blockchain: Arc<Mutex<Blockchain>>,
     control_chan: Receiver<ControlSignal>,
     operating_state: OperatingState,
     server: ServerHandle,
+    num_mined:u8,
 }
 
 #[derive(Clone)]
@@ -33,6 +39,7 @@ pub struct Handle {
 
 pub fn new(
     server: &ServerHandle,
+    blockchain: &Arc<Mutex<Blockchain>>,
 ) -> (Context, Handle) {
     let (signal_chan_sender, signal_chan_receiver) = unbounded();
 
@@ -40,6 +47,8 @@ pub fn new(
         control_chan: signal_chan_receiver,
         operating_state: OperatingState::Paused,
         server: server.clone(),
+        blockchain: Arc::clone(blockchain),
+        num_mined: 0
     };
 
     let handle = Handle {
@@ -88,6 +97,7 @@ impl Context {
 
     fn miner_loop(&mut self) {
         // main mining loop
+        let start_time=time::Instant::now();
         loop {
             // check and react to control signals
             match self.operating_state {
@@ -111,8 +121,31 @@ impl Context {
                 return;
             }
 
-            // TODO: actual mining
-
+            let parent=self.blockchain.lock().unwrap().tip();
+            let difficulty=self.blockchain.lock().unwrap().chains[&parent].header.difficulty;
+            let root=H256::from([0;32]);//merkle root
+            let signed_trans=generate_random_signed_transaction();
+            let mut trans_vec:Vec<SignedTransaction>=vec![];
+            trans_vec.push(signed_trans);
+            let mut rng = rand::thread_rng();
+            let contents=Content{transactions:trans_vec};
+            let nonce:u32=rng.gen();
+            let timestamp=time::SystemTime::now().duration_since(time::SystemTime::UNIX_EPOCH).unwrap().as_millis();
+            let new_header=Header{parent,nonce,difficulty,timestamp,merkle_root:root};
+            let new_block=Block{header:new_header,content:contents};
+            let new_hash=new_block.hash();
+            if new_block.hash()<=difficulty
+            {
+                self.num_mined+=1;
+                self.blockchain.lock().unwrap().insert(&new_block);
+                let now_time=time::Instant::now();
+                println!("the current difficulty is {}",difficulty);
+                println!("mined {} blocks, the time has passed {:?}, the new block's hash value is {:?}\n",self.num_mined,now_time.checked_duration_since(start_time),new_block.hash());
+            }
+            if self.num_mined>=100
+            {
+                break;
+            }
             if let OperatingState::Run(i) = self.operating_state {
                 if i != 0 {
                     let interval = time::Duration::from_micros(i as u64);

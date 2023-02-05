@@ -6,7 +6,9 @@
 use serde::{Serialize, Deserialize};
 use crate::crypto::hash::{H256, Hashable};
 use crate::transaction::SignedTransaction as Transaction;
+//use std::collections::hash_map::RawEntryMut;
 use std::time::{SystemTime};
+use ring::{digest};
 /// The block header
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Header {
@@ -33,18 +35,23 @@ pub struct Block {
 /// Returns the default difficulty, which is a big-endian 32-byte integer.
 /// - Note: a valid block must satisfy that `block.hash() <= difficulty`.
 ///   In other words, the _smaller_ the `difficulty`, the harder it actually is to mine a block!
-fn default_difficulty() -> [u8; 32] {
+fn random_difficulty() -> H256 {
     // TODO: it's up to you to determine an appropriate difficulty.
     // For example, after executing the code below, `difficulty` represents the number 256^31.
     //
     // let mut difficulty = [0u8; 32];
     // difficulty[0] = 1;
     // difficulty
+    let random = digest::digest(&ring::digest::SHA256,"af921c067ad9d870216ed5f7afae984258a35205a3f6eb65b46a0939decc823c
+    ".as_bytes());
+    let b = <H256>::from(random);
+    b
+}
+fn default_difficulty()-> [u8; 32]{
     let mut difficulty = [0u8; 32];
     difficulty[0] = 1;
     difficulty
 }
-
 impl Block {
     /// Construct the (totally deterministic) genesis block
     pub fn genesis() -> Block {
@@ -52,7 +59,8 @@ impl Block {
         let header = Header {
             parent: Default::default(),
             nonce: 0,
-            difficulty: default_difficulty().into(),
+            //difficulty: default_difficulty().into(),
+            difficulty:random_difficulty(),
             timestamp: 0,
             merkle_root: Default::default(),
         };

@@ -9,7 +9,7 @@ pub mod crypto;
 pub mod miner;
 pub mod network;
 pub mod transaction;
-
+use std::sync::{Arc, Mutex};
 use clap::clap_app;
 use crossbeam::channel;
 use log::{error, info};
@@ -81,8 +81,10 @@ fn main() {
     worker_ctx.start();
 
     // start the miner
+    let blockchain = Arc::new(Mutex::new(blockchain::Blockchain::new()));
     let (miner_ctx, miner) = miner::new(
         &server,
+        &blockchain,
     );
     miner_ctx.start();
 
