@@ -23,11 +23,7 @@ fn hash_children(left: &H256, right: &H256) -> H256 {
 
 /// Duplicate the last node in `nodes` to make its length even.
 fn duplicate_last_node(nodes: &mut Vec<Option<MerkleTreeNode>>) {
-    if nodes.len()&1==1
-    {
-        let last=nodes.last().unwrap();
-        nodes.push(last.clone());
-    }
+    nodes.push(nodes.last().unwrap().clone());
 }
 
 impl MerkleTree {
@@ -71,62 +67,68 @@ impl MerkleTree {
 
     /// Returns the Merkle Proof of data at index i
     pub fn proof(&self, index: usize) -> Vec<H256> {// data at index has proof of 
-        let mut proof:Vec<H256>=Vec::new();
-        let mut now=&self.root;
-        let mut cnt=1usize<<(self.level_count-1);
-        let mut i=index;
-        while cnt>1
+        let mut proof_list=Vec::new();
+        let mut choose_bits=Vec::new();
+        let mut index=index;
+        let mut r=&self.root;
+        for _ in 0..self.level_count-1
         {
-            if i<cnt/2
-            {
-                proof.push(now.right.as_ref().unwrap().hash);
-                now=&now.left.as_ref().unwrap();
-            }
-            else 
-            {    
-                i-=cnt/2;
-                proof.push(now.left.as_ref().unwrap().hash);
-                now=&now.right.as_ref().unwrap();
-            }
-            cnt>>=1;
+            choose_bits.push(index%2);
+            index/=2;
         }
-        proof
+        for i in choose_bits.iter().rev()
+        {
+            match i {
+                0 =>
+                {
+                    proof_list.push(r.right.as_ref().unwrap().hash);
+                    r=r.left.as_ref().unwrap();
+                }
+                1 =>
+                {
+                    proof_list.push(r.left.as_ref().unwrap().hash);
+                    r=r.right.as_ref().unwrap();
+                }
+                _=>
+                {
+                    unreachable!();
+                }
+            }
+        }
+        proof_list
     }
 }
 
 /// Verify that the datum hash with a vector of proofs will produce the Merkle root. Also need the
 /// index of datum and `leaf_size`, the total number of leaves.
 pub fn verify(root: &H256, datum: &H256, proof: &[H256], index: usize, leaf_size: usize) -> bool {
-    let mut step=0;
-    while(1usize<<step)<leaf_size
+    let mut veri_bits=Vec::new();
+    let mut hash=*datum;
+    let mut index=index;
+    for _ in 0..proof.len()
     {
-        step+=1;
+        veri_bits.push(index%2);
+        index/=2;
     }
-    if step!=proof.len()
+    for i in 0..proof.len()
     {
-        return false
+        hash=match veri_bits[i]
+        {
+            0=>
+            {
+                hash_children(&hash,&proof[i])
+            }
+            1=>
+            {
+                hash_children(&proof[i],&hash)
+            }
+            _=>
+            {
+                unreachable!();
+            }
+        }
     }
-    let mut now=H256::from(*datum);
-    let mut i=index;
-    let mut j=proof.len()-1;
-    loop 
-    {
-        if i%2==0
-        {
-            now=hash_children(&now, &proof[j]);
-        }
-        else 
-        {
-            now=hash_children(&proof[j], &now);    
-        }
-        i>>=1;
-        if j==0
-        {
-            break;
-        }
-        j-=1;
-    }
-    root.hash()==now.hash()
+    hash==*root
 }
 
 #[cfg(test)]

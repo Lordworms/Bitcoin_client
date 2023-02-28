@@ -1,16 +1,18 @@
-use crate::blockchain;
+use crate::crypto::merkle::{self, MerkleTree};
+use crate::{blockchain, block};
 use crate::crypto::hash::{H256, Hashable};
 use crate::network::server::Handle as ServerHandle;
 use std::sync::{Arc, Mutex};
-use log::info;
+use log::{info, debug};
 use rand::Rng;
 use crate::block::{Content, Header, Block};
-use crate::transaction::{generate_random_signed_transaction, SignedTransaction};
+use crate::transaction::{generate_random_signed_transaction, SignedTransaction, Transaction};
 use crate::blockchain::Blockchain;
 use crossbeam::channel::{unbounded, Receiver, Sender, TryRecvError};
-use std::time;
+use std::time::{self, SystemTime, UNIX_EPOCH};
 use std::thread;
-
+use crate::network::message::Message;
+use blockchain::Blockorigin;
 enum ControlSignal {
     Start(u64), // the number controls the lambda of interval between block generation
     Exit,
@@ -23,12 +25,13 @@ enum OperatingState {
 }
 
 pub struct Context {
-    /// Channel for receiving control signal
-    blockchain: Arc<Mutex<Blockchain>>,
-    control_chan: Receiver<ControlSignal>,
-    operating_state: OperatingState,
-    server: ServerHandle,
-    num_mined:u8,
+    control_chan:Receiver<ControlSignal>,
+    operating_state:OperatingState,
+    server:ServerHandle,
+    blockchain:Arc<Mutex<Blockchain>>,
+
+    total_num_mined: u64,
+    start_time:Option<SystemTime>,
 }
 
 #[derive(Clone)]
@@ -48,7 +51,8 @@ pub fn new(
         operating_state: OperatingState::Paused,
         server: server.clone(),
         blockchain: Arc::clone(blockchain),
-        num_mined: 0
+        total_num_mined: 0,
+        start_time:None
     };
 
     let handle = Handle {
@@ -87,17 +91,31 @@ impl Context {
             ControlSignal::Exit => {
                 info!("Miner shutting down");
                 self.operating_state = OperatingState::ShutDown;
+                if let Some(start_time)=self.start_time
+                {
+                    let second_spent=SystemTime::now().duration_since(start_time).unwrap().as_secs_f64();
+                    let mine_rate=(self.total_num_mined as f64)/second_spent;
+                    info!("Mined {} blocks in {} time and mine rate is {}",self.total_num_mined,second_spent,mine_rate);
+                    let blockchain=self.blockchain.lock().unwrap();
+                    info!("Now blockchain has {} blocks",blockchain.block_size());
+                    let longest_chain=blockchain.all_blocks_in_longest_chain();
+                    info!("the longest chain is {:?},it has {} blcoks",longest_chain,longest_chain.len());
+                    info!("average block size is {}",blockchain.average_size());
+                    info!("delay for every block {:?}",blockchain.all_block_delay());
+                }
             }
             ControlSignal::Start(i) => {
                 info!("Miner starting in continuous mode with lambda {}", i);
                 self.operating_state = OperatingState::Run(i);
+                if self.start_time==None{
+                    self.start_time=Some(SystemTime::now());
+                }
             }
         }
     }
 
     fn miner_loop(&mut self) {
         // main mining loop
-        let start_time=time::Instant::now();
         loop {
             // check and react to control signals
             match self.operating_state {
@@ -121,36 +139,43 @@ impl Context {
                 return;
             }
 
-            let parent=self.blockchain.lock().unwrap().tip();
-            let difficulty=self.blockchain.lock().unwrap().chains[&parent].header.difficulty;
-            let root=H256::from([0;32]);//merkle root
-            let signed_trans=generate_random_signed_transaction();
-            let mut trans_vec:Vec<SignedTransaction>=vec![];
-            trans_vec.push(signed_trans);
-            let mut rng = rand::thread_rng();
-            let contents=Content{transactions:trans_vec};
-            let nonce:u32=rng.gen();
-            let timestamp=time::SystemTime::now().duration_since(time::SystemTime::UNIX_EPOCH).unwrap().as_millis();
-            let new_header=Header{parent,nonce,difficulty,timestamp,merkle_root:root};
-            let new_block=Block{header:new_header,content:contents};
-            let new_hash=new_block.hash();
-            if new_block.hash()<=difficulty
-            {
-                self.num_mined+=1;
-                self.blockchain.lock().unwrap().insert(&new_block);
-                let now_time=time::Instant::now();
-                println!("the current difficulty is {}",difficulty);
-                println!("mined {} blocks, the time has passed {:?}, the new block's hash value is {:?}\n",self.num_mined,now_time.checked_duration_since(start_time),new_block.hash());
-            }
-            if self.num_mined>=100
-            {
-                break;
-            }
             if let OperatingState::Run(i) = self.operating_state {
                 if i != 0 {
                     let interval = time::Duration::from_micros(i as u64);
                     thread::sleep(interval);
                 }
+                let mut blockchain=self.blockchain.lock().unwrap();
+                let parent=blockchain.tip();
+                let timestamp=SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
+                let transactions:Vec<SignedTransaction>=vec![Default::default()];
+                let merkle_root=MerkleTree::new(&transactions).root();
+                let nonce:u32=rand::random();
+                let difficulty=blockchain.get_block(&parent).header.difficulty;
+                let new_block_header=Header
+                {
+                    parent,
+                    nonce,
+                    difficulty,
+                    merkle_root,
+                    timestamp
+                };
+                let content=Content{transactions};
+                let new_block=Block{
+                    header:new_block_header,
+                    content
+                };
+                
+                if new_block.hash()<=difficulty{  
+                    blockchain.insert(&new_block);
+                    self.total_num_mined+=1;
+                    //info!("Mined a new block {:?},the total number is {}",new_block,self.total_num_mined); 
+                    self.server.broadcast(Message::NewBlockHashes(vec![new_block.hash()]));
+                    blockchain.hash_to_origin.insert(new_block.hash(), Blockorigin::Mined);
+                }
+                // if blockchain.block_size() == 100{
+                //     self.operating_state=OperatingState::Paused;
+                // }
+
             }
         }
     }

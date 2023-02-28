@@ -87,6 +87,10 @@ impl Server {
                             miner.start(lambda);
                             respond_result!(req, true, "ok");
                         }
+                        "/miner/exit" => {
+                            miner.exit();
+                            respond_result!(req, true, "ok");
+                        }
                         "/network/ping" => {
                             network.broadcast(Message::Ping(String::from("Test ping")));
                             respond_result!(req, true, "ok");

@@ -5,6 +5,7 @@
 
 use serde::{Serialize, Deserialize};
 use crate::crypto::hash::{H256, Hashable};
+use crate::crypto::key_pair::random;
 use crate::transaction::SignedTransaction as Transaction;
 //use std::collections::hash_map::RawEntryMut;
 use std::time::{SystemTime};
@@ -56,16 +57,21 @@ impl Block {
     /// Construct the (totally deterministic) genesis block
     pub fn genesis() -> Block {
         let transactions: Vec<Transaction> = vec![];
+        let random = digest::digest(&ring::digest::SHA256,"00011718210e0b3b608814e04e61fde06d0df794319a12162f287412df3ec920".as_bytes());
+        let b=<H256>::from(random);
         let header = Header {
             parent: Default::default(),
             nonce: 0,
-            //difficulty: default_difficulty().into(),
-            difficulty:random_difficulty(),
+            //difficulty:random_difficulty(),
+            difficulty:default_difficulty().into(),
             timestamp: 0,
-            merkle_root: Default::default(),
+            merkle_root:b,
         };
         let content = Content { transactions };
         Block { header, content }
+    }
+    pub fn size(&self)->usize{
+        bincode::serialize(&self).unwrap().len()
     }
 }
 
@@ -105,8 +111,7 @@ pub mod test {
             parent: *parent,
             nonce: rand::random(),
             difficulty: default_difficulty().into(),
-            timestamp:rand::random(),
-            //timestamp: SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).expect("Time went backwards").as_millis(),
+            timestamp: SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).expect("Time went backwards").as_millis(),
             merkle_root: root,
         };
         let content = Content { transactions };
