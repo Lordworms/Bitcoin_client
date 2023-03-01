@@ -2,6 +2,7 @@
 //! 
 //! You need to implement the `Blockchain` struct and its methods.
 
+use log::info;
 use ring::signature::KeyPair;
 
 use crate::basic::block::{Block, self};
@@ -78,7 +79,7 @@ impl Blockchain {
             }
             prev_state.add_an_account(sender, *sender_nonce+1, sender_balance-value);
             prev_state.add_an_account(receiver, *receiver_nonce, receiver_balance+value);
-            println!("{}",prev_state);
+            info!("{}",prev_state);
         }
         if valid {
             self.block_state.insert(block.hash(), prev_state.clone());

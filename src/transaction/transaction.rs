@@ -1,4 +1,4 @@
-use log::debug;
+use log::{debug, info};
 use serde::{Serialize,Deserialize};
 use ring::signature::{Ed25519KeyPair, Signature, KeyPair, VerificationAlgorithm, EdDSAParameters,UnparsedPublicKey,ED25519};
 use ring::digest::{digest,SHA256};
@@ -85,12 +85,12 @@ pub fn generate_random_transaction() -> Transaction {
     pub fn verify_by_state(&self,now_state:&State)->bool{
         let sender=self.trans_raw.sender;
         if !self.verify_signature(){
-            debug!("not a valid public key, verify failed\n");
+            info!("INVALID TRANSACTION!");
             return false
         }
         let accounts=now_state.get_accounts();
         if !accounts.contains_key(&sender){
-            debug!("did not find a account in now state!\n");
+            info!("INVALID TRANSACTION!");
             return false;
         }
         let (sender_nonce,sender_balance)=accounts.get(&sender).unwrap();

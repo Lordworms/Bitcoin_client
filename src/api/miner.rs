@@ -91,36 +91,36 @@ impl Context {
                 self.miner_loop();
             })
             .unwrap();
-        println!("Miner initialized into paused mode");
+        info!("Miner initialized into paused mode");
     }
 
     fn handle_control_signal(&mut self, signal: ControlSignal) {
         match signal {
             ControlSignal::Exit => {
-                println!("Miner shutting down");
+                info!("Miner shutting down");
                 self.operating_state = OperatingState::ShutDown;
                 if let Some(start_time)=self.start_time
                 {
                     let second_spent=SystemTime::now().duration_since(start_time).unwrap().as_secs_f64();
                     let mine_rate=(self.total_num_mined as f64)/second_spent;
-                    println!("Mined {} blocks in {} time and mine rate is {}",self.total_num_mined,second_spent,mine_rate);
+                    info!("Mined {} blocks in {} time and mine rate is {}",self.total_num_mined,second_spent,mine_rate);
                     let blockchain=self.blockchain.lock().unwrap();
                     let mempool=self.mempool.lock().unwrap();
-                    println!("Now blockchain has {} blocks",blockchain.block_size()-1);
+                    info!("Now blockchain has {} blocks",blockchain.block_size()-1);
                     let longest_chain=blockchain.all_blocks_in_longest_chain();
-                    println!("the longest chain is {:?},it has {} blcoks",longest_chain,longest_chain.len()-1);
-                    println!("average block size is {}",blockchain.average_size());
-                    println!("delay for every block {:?}",blockchain.all_block_delay());
+                    info!("the longest chain is {:?},it has {} blcoks",longest_chain,longest_chain.len()-1);
+                    info!("average block size is {}",blockchain.average_size());
+                    info!("delay for every block {:?}",blockchain.all_block_delay());
                     let now_state=blockchain.get_tip_state();
-                    println!("the mempool has {}",mempool.get_size());
-                    //println!("{:?}",mempool.hash_to_transaction);
-                    println!("start to print now_state!");
-                    println!("{}",now_state);
+                    info!("the mempool has {}",mempool.get_size());
+                    //info!("{:?}",mempool.hash_to_transaction);
+                    info!("start to print now_state!");
+                    info!("{}",now_state);
                     END_GENERATOR.fetch_or(true, Ordering::SeqCst);
                 }
             }
             ControlSignal::Start(i) => {
-                println!("Miner starting in continuous mode with lambda {}", i);
+                info!("Miner starting in continuous mode with lambda {}", i);
                 END_GENERATOR.store(false, Ordering::SeqCst);
                 self.operating_state = OperatingState::Run(i);
                 if self.start_time==None{
@@ -172,6 +172,7 @@ impl Context {
                 
                 // let mut tx_tracker:HashSet<Vec<u8>>=HashSet::new();
                 //for every block, add 3 transactions into it
+                let mut transaction_delet:Vec<SignedTransaction>=Vec::new();
                 for (hash,transaction) in mempool.hash_to_transaction.iter(){
                     if transactions.len()>=3{
                         break;
@@ -182,9 +183,10 @@ impl Context {
                         data.push(hash.clone());
                     }
                     else {
-                        //println!("transaction verify failed!\n");
+                        transaction_delet.push(transaction.clone());
                     }
                 }
+                mempool.remove_transaction(transaction_delet);
                 if data.len()<3{
                     //debug!("data length is less than 3\n");
                     drop(blockchain);
@@ -207,10 +209,9 @@ impl Context {
                 };
                 
                 if new_block.hash()<=difficulty{  
-                    debug!("mined a new block,now the block number is {}",self.total_num_mined);
                     blockchain.insert(&new_block);
                     self.total_num_mined+=1;
-                    println!("Mined a new block {:?},the total number is {}",new_block,self.total_num_mined); 
+                    info!("mined a new block,now the block number is {}",self.total_num_mined);
                     self.server.broadcast(Message::NewBlockHashes(vec![new_block.hash()]));
                     mempool.remove_transaction(transaction_copy);
                     blockchain.hash_to_origin.insert(new_block.hash(), Blockorigin::Mined);

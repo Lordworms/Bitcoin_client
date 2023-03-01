@@ -168,7 +168,7 @@ mod tests {
         let input_data: Vec<H256> = gen_merkle_tree_data!();
         let merkle_tree = MerkleTree::new(&input_data);
         let proof = merkle_tree.proof(0);
-        println!("proof[0] is {:?}",proof[0]);
+        info!("proof[0] is {:?}",proof[0]);
         assert_eq!(proof,
                    vec![hex!("965b093a75a75895a351786dd7a188515173f6928a8af8c9baa4dcff268a4f0f").into()]
         );
@@ -203,8 +203,8 @@ mod tests {
         let input_data: Vec<H256> = gen_merkle_tree_large!();
         let merkle_tree = MerkleTree::new(&input_data);
         let proof = merkle_tree.proof(5);
-        println!("{:?}",proof);
-        println!("length of proof is {}",proof.len());
+        info!("{:?}",proof);
+        info!("length of proof is {}",proof.len());
         // We accept the proof in either the top-down or bottom-up order; you should stick to either of them.
         let expected_proof_bottom_up: Vec<H256> = vec![
             (hex!("c8c37c89fcc6ee7f5e8237d2b7ed8c17640c154f8d7751c774719b2b82040c76")).into(),

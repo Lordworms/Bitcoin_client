@@ -6,6 +6,7 @@ use ring::signature::{Ed25519KeyPair, Signature, KeyPair, VerificationAlgorithm,
 use crate::crypto::hash::{H256, Hashable};
 use crate::api::miner::ControlSignal;
 use crate::api::miner::OperatingState;
+use crate::crypto::key_pair;
 use crate::network::peer;
 use crate::network::server::Handle as ServerHandle;
 use crate::transaction;
@@ -60,7 +61,7 @@ impl TransactionGenerator {
             let addr_raw:[u8;20]=[i;20];
             account_vec.push(Address::new(addr_raw));
         }
-        println!("start to generate loop!\n");
+        info!("start to generate loop!\n");
         while END_GENERATOR.load(Ordering::SeqCst){
 
         }
@@ -70,9 +71,16 @@ impl TransactionGenerator {
             if END_GENERATOR.load(Ordering::SeqCst){
                 break;
             }
-            let mut rng = rand::thread_rng();
             let blockchain=self.blockchain.lock().unwrap();
             let mut mempool=self.mempool.lock().unwrap();
+            let mut rng = rand::thread_rng();
+            let prob=rng.gen_range(0,100);
+            if prob >97{
+                let transaction=generate_random_signed_transaction_with_key(&key_pair::random());
+                mempool.insert(transaction);
+            }
+            else{
+            
             let now_state=blockchain.get_tip_state();
             let accounts=now_state.get_accounts();
             let sender_id=rng.gen_range(0, accounts.len());
@@ -91,6 +99,7 @@ impl TransactionGenerator {
                 nonce,
             };
             let transaction=SignedTransaction::from_raw(trans_raw,&self.controlled_keypair);
+            
             if transaction.verify_by_state(&now_state){
                 let trans_hash=transaction.hash();
                 mempool.insert(transaction);
@@ -98,11 +107,10 @@ impl TransactionGenerator {
                 self.server.broadcast(Message::NewTransactionHashes(trans_vec));
                 trans_cnt+=1;
             }
-            
-            //println!("generate a new transaction and broadcast to others! the new total number of transaction is {}\n",trans_cnt);
-            drop(mempool);
-            drop(blockchain);
-            
+        }
+        drop(mempool);
+        drop(blockchain);
+            //info!("generate a new transaction and broadcast to others! the new total number of transaction is {}\n",trans_cnt); 
         }
     }
 }

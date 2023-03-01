@@ -145,7 +145,7 @@ impl Context {
                     }
                 }
                 Message::Transactions(trans_vec)=>{
-                    info!("Received new transactions!");
+                    
                     let mut new_hashes:Vec<H256>=Vec::new();
                     let blockchain=self.blockchain.lock().unwrap();
                     let mut mempool=self.mempool.lock().unwrap();
@@ -153,7 +153,7 @@ impl Context {
                         let cur_state=blockchain.get_tip_state();
                         if trans.verify_by_state(&cur_state){
                             mempool.insert(trans.clone());
-                            info!("insert the new transaction into mempool!\n");
+                            info!("Received a new valid transactions and its hash is {:?}",trans.hash());
                             new_hashes.push(trans.hash());//get new hashes
                         }
                     }
