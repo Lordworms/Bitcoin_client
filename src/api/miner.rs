@@ -1,16 +1,20 @@
+use crate::basic::mempool::Mempool;
 use crate::crypto::merkle::{self, MerkleTree};
-use crate::{blockchain, block};
+use crate::basic::block;
+use crate::blockchain::blockchain;
 use crate::crypto::hash::{H256, Hashable};
 use crate::network::server::Handle as ServerHandle;
+use crate::transaction;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use log::{info, debug};
 use rand::Rng;
-use crate::block::{Content, Header, Block};
-use crate::transaction::{generate_random_signed_transaction, SignedTransaction, Transaction};
-use crate::blockchain::Blockchain;
+use crate::basic::block::{Content, Header, Block};
+use crate::transaction::transaction::{SignedTransaction, Transaction};
+use crate::blockchain::blockchain::Blockchain;
 use crossbeam::channel::{unbounded, Receiver, Sender, TryRecvError};
 use std::time::{self, SystemTime, UNIX_EPOCH};
-use std::thread;
+use std::{thread, mem};
 use crate::network::message::Message;
 use blockchain::Blockorigin;
 enum ControlSignal {
@@ -29,7 +33,7 @@ pub struct Context {
     operating_state:OperatingState,
     server:ServerHandle,
     blockchain:Arc<Mutex<Blockchain>>,
-
+    mempool:Arc<Mutex<Mempool>>,
     total_num_mined: u64,
     start_time:Option<SystemTime>,
 }
@@ -43,6 +47,7 @@ pub struct Handle {
 pub fn new(
     server: &ServerHandle,
     blockchain: &Arc<Mutex<Blockchain>>,
+    mempool:&Arc<Mutex<Mempool>>,
 ) -> (Context, Handle) {
     let (signal_chan_sender, signal_chan_receiver) = unbounded();
 
@@ -51,6 +56,7 @@ pub fn new(
         operating_state: OperatingState::Paused,
         server: server.clone(),
         blockchain: Arc::clone(blockchain),
+        mempool:Arc::clone(mempool),
         total_num_mined: 0,
         start_time:None
     };
@@ -144,21 +150,47 @@ impl Context {
                     let interval = time::Duration::from_micros(i as u64);
                     thread::sleep(interval);
                 }
+                let mut mempool=self.mempool.lock().unwrap();
+                //do if the mempool has 3 or more transactions
+                if mempool.get_size()<3{
+                    continue;
+                }
                 let mut blockchain=self.blockchain.lock().unwrap();
                 let parent=blockchain.tip();
                 let timestamp=SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
-                let transactions:Vec<SignedTransaction>=vec![Default::default()];
-                let merkle_root=MerkleTree::new(&transactions).root();
+                let mut data:Vec<H256>=vec![];
                 let nonce:u32=rand::random();
                 let difficulty=blockchain.get_block(&parent).header.difficulty;
-                let new_block_header=Header
-                {
+                let mut transactions:Vec<SignedTransaction>=Vec::new();
+                
+                // let mut tx_tracker:HashSet<Vec<u8>>=HashSet::new();
+                //for every block, add 3 transactions into it
+                for (hash,transaction) in mempool.hash_to_transaction.iter(){
+                    if transactions.len()>=3{
+                        break;
+                    }
+                    let now_state=blockchain.get_tip_state();
+                    if transaction.verify_by_state(&now_state){
+                        transactions.push(transaction.clone());
+                        data.push(hash.clone());
+                    }
+                    else {
+                        info!("transaction verify failed!\n");
+                    }
+                }
+                if data.len()<3{
+                    info!("data length is less than 3\n");
+                    continue;
+                }
+                let merkle_root=MerkleTree::new(&data).root();
+                let new_block_header=Header{
                     parent,
                     nonce,
                     difficulty,
                     merkle_root,
                     timestamp
                 };
+                let transaction_copy=transactions.clone();
                 let content=Content{transactions};
                 let new_block=Block{
                     header:new_block_header,
@@ -166,16 +198,14 @@ impl Context {
                 };
                 
                 if new_block.hash()<=difficulty{  
+                    debug!("mined a new block,now the block number is {}",self.total_num_mined);
                     blockchain.insert(&new_block);
                     self.total_num_mined+=1;
-                    //info!("Mined a new block {:?},the total number is {}",new_block,self.total_num_mined); 
+                    info!("Mined a new block {:?},the total number is {}",new_block,self.total_num_mined); 
                     self.server.broadcast(Message::NewBlockHashes(vec![new_block.hash()]));
+                    mempool.remove_transaction(transaction_copy);
                     blockchain.hash_to_origin.insert(new_block.hash(), Blockorigin::Mined);
                 }
-                // if blockchain.block_size() == 100{
-                //     self.operating_state=OperatingState::Paused;
-                // }
-
             }
         }
     }

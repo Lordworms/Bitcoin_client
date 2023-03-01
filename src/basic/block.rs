@@ -6,7 +6,7 @@
 use serde::{Serialize, Deserialize};
 use crate::crypto::hash::{H256, Hashable};
 use crate::crypto::key_pair::random;
-use crate::transaction::SignedTransaction as Transaction;
+use crate::transaction::transaction::SignedTransaction as Transaction;
 //use std::collections::hash_map::RawEntryMut;
 use std::time::{SystemTime};
 use ring::{digest};
@@ -20,7 +20,7 @@ pub struct Header {
     pub merkle_root: H256,
 }
 
-/// Transactions contained in a block
+/// Transactions contained in a block,the transaction is Signed transaction
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Content {
     pub transactions: Vec<Transaction>,
@@ -57,21 +57,25 @@ impl Block {
     /// Construct the (totally deterministic) genesis block
     pub fn genesis() -> Block {
         let transactions: Vec<Transaction> = vec![];
-        let random = digest::digest(&ring::digest::SHA256,"00011718210e0b3b608814e04e61fde06d0df794319a12162f287412df3ec920".as_bytes());
-        let b=<H256>::from(random);
         let header = Header {
             parent: Default::default(),
             nonce: 0,
-            //difficulty:random_difficulty(),
             difficulty:default_difficulty().into(),
             timestamp: 0,
-            merkle_root:b,
+            merkle_root:Default::default()
         };
         let content = Content { transactions };
         Block { header, content }
     }
     pub fn size(&self)->usize{
         bincode::serialize(&self).unwrap().len()
+    }
+    pub fn get_content(&self)->Vec<Transaction>{
+        let mut trans_vec=Vec::new();
+        for trans in &self.content.transactions{
+            trans_vec.push(trans.clone());
+        }
+        trans_vec
     }
 }
 

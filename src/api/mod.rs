@@ -1,5 +1,7 @@
+pub mod miner;
+pub mod address;
 use serde::Serialize;
-use crate::miner::Handle as MinerHandle;
+use miner::Handle as MinerHandle;
 use crate::network::server::Handle as NetworkServerHandle;
 use crate::network::message::Message;
 

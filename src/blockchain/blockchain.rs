@@ -2,10 +2,16 @@
 //! 
 //! You need to implement the `Blockchain` struct and its methods.
 
-use crate::block::{Block, self};
+use ring::signature::KeyPair;
+
+use crate::basic::block::{Block, self};
 use crate::crypto::hash::{H256, Hashable};
 use std::collections::{HashMap, VecDeque};
+use std::ops::Add;
 use std::time::{SystemTime};
+use crate::basic::key_pair;
+use crate::basic::state::State;
+use crate::api::address::H160 as Address;
 pub enum Blockorigin{
     Mined,
     Recieved{delay_ms:u128}
@@ -16,6 +22,7 @@ pub struct Blockchain {
     orphan_buffer:HashMap<H256,Vec<Block>>,
     hash_tip:H256,
     difficulty:H256,
+    block_state:HashMap<H256,State>,
     pub hash_to_origin:HashMap<H256,Blockorigin>
 }
 
@@ -29,6 +36,15 @@ impl Blockchain {
         chain_map.insert(hash, genis);
         let mut height_map:HashMap<H256,u8>=HashMap::new();
         height_map.insert(hash,0);
+
+        let mut state=State::new();
+        for i in 1..6{
+            let addr_raw:[u8;20]=[i;20];
+            let addr=Address::new(addr_raw);
+            state.add_account(addr, 10000);   
+        }
+        let mut block_state:HashMap<H256, State>=HashMap::new();
+        block_state.insert(hash,state);
         Blockchain {
             chain_map,
             height_map,
@@ -36,7 +52,34 @@ impl Blockchain {
             orphan_buffer:HashMap::new(),
             hash_tip:hash,
             hash_to_origin:HashMap::new(),
+            block_state
         }
+    }
+    pub fn update_state(&mut self,block:&Block)->bool{
+        let mut prev_state=self.block_state.get(&block.header.parent).unwrap().clone();
+        let mut valid=true;
+        for transaction in block.get_content(){
+            let mut sender=transaction.trans_raw.sender;
+            let mut receiver=transaction.trans_raw.receiver;
+            //if did not contains the sender, add the sender's infomation
+            if !prev_state.contains_address(&receiver){
+                prev_state.add_account(receiver, 0);
+            }
+            let accounts=prev_state.get_accounts();
+            let (sender_nonce,sender_balance)=accounts.get(&sender).unwrap();
+            let (receiver_nonce,receiver_balance)=accounts.get(&receiver).unwrap();
+            let value=transaction.trans_raw.value;
+            if sender_balance<&value{
+                valid=false;
+                break;
+            }
+            prev_state.add_an_account(sender, *sender_nonce+1, sender_balance-value);
+            prev_state.add_an_account(receiver, *receiver_nonce, receiver_balance+value);
+        }
+        if valid {
+            self.block_state.insert(block.hash(), prev_state.clone());
+        }
+        valid
     }
     /// Insert a block into blockchain
     pub fn insert(&mut self, block: &Block) {
@@ -50,6 +93,7 @@ impl Blockchain {
         {
             self.hash_tip=hash;
         }
+        self.update_state(block);
     }
     pub fn parent_check(&self, block: &Block) -> bool {
         self.contain_block(&block.header.parent)
@@ -80,6 +124,12 @@ impl Blockchain {
     /// Get the last block's hash of the longest chain
     pub fn tip(&self) -> H256 {
         self.hash_tip
+    }
+    pub fn get_block_state(&self,hash:&H256)->State{
+        self.block_state.get(hash).unwrap().clone()
+    }
+    pub fn get_tip_state(&self)->State{
+        self.get_block_state(&self.hash_tip)
     }
     pub fn pow_validity_check(&self, block: &Block) -> bool {
         block.hash() <= block.header.difficulty && block.header.difficulty == self.difficulty
@@ -123,7 +173,7 @@ impl Blockchain {
 #[cfg(any(test, test_utilities))]
 mod tests {
     use super::*;
-    use crate::block::test::generate_random_block;
+    use crate::basic::block::test::generate_random_block;
     use crate::crypto::hash::Hashable;
 
     #[test]

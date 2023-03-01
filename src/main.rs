@@ -3,26 +3,26 @@
 extern crate hex_literal;
 
 pub mod api;
-pub mod block;
-pub mod blockchain;
 pub mod crypto;
-pub mod miner;
 pub mod network;
+pub mod blockchain;
+pub mod basic;
 pub mod transaction;
-
+use basic::key_pair;
 use clap::clap_app;
 use crossbeam::channel;
-use log::{error, info};
+use log::{error,info,debug};
 use api::Server as ApiServer;
+use basic::mempool::Mempool;
 use network::{server, worker};
+use transaction::transaction_generator;
 use std::net;
 use std::process;
 use std::thread;
 use std::time;
-
 use std::sync::{Arc, Mutex};
-use crate::blockchain::Blockchain;
-
+use blockchain::blockchain::Blockchain;
+use api::miner;
 fn main() {
     // parse command line arguments
     let matches = clap_app!(Bitcoin =>
@@ -69,7 +69,16 @@ fn main() {
 
     // create the Blockchain
     let blockchain = Arc::new(Mutex::new(Blockchain::new()));
-
+    let mempool=Arc::new(Mutex::new(Mempool::new()));
+    //start the transaction_generator
+    let key_pair=key_pair::random();
+    let transaction_generator=transaction_generator::TransactionGenerator::new(
+        &server,
+        &mempool,
+        &blockchain,
+        key_pair
+    );
+    transaction_generator.start();
     // start the worker
     let p2p_workers = matches
         .value_of("p2p_workers")
@@ -84,6 +93,7 @@ fn main() {
         msg_rx,
         &server,
         &blockchain,
+        &mempool,
     );
     worker_ctx.start();
 
@@ -91,6 +101,7 @@ fn main() {
     let (miner_ctx, miner) = miner::new(
         &server,
         &blockchain,
+        &mempool,
     );
     miner_ctx.start();
 
