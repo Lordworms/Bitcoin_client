@@ -23,6 +23,7 @@ use std::time;
 use std::sync::{Arc, Mutex};
 use blockchain::blockchain::Blockchain;
 use api::miner;
+
 fn main() {
     // parse command line arguments
     let matches = clap_app!(Bitcoin =>
@@ -78,6 +79,7 @@ fn main() {
         &blockchain,
         key_pair
     );
+    //debug!("start transaction generator!\n");
     transaction_generator.start();
     // start the worker
     let p2p_workers = matches

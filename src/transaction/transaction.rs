@@ -96,7 +96,7 @@ pub fn generate_random_transaction() -> Transaction {
         let (sender_nonce,sender_balance)=accounts.get(&sender).unwrap();
         let value=self.trans_raw.value;
         if sender_balance>&value && sender_nonce+1==self.trans_raw.nonce{
-            debug!("verify success!\n");
+            //debug!("verify success!\n");
             return true;
         }
         false

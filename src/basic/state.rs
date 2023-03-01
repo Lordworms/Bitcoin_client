@@ -1,6 +1,6 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::{Display, self, write}};
 use crate::api::address::H160;
-#[derive(Clone)]
+#[derive(Clone,Debug)]
 pub struct State{
     pub accounts:HashMap<H160,(usize,usize)>//HashMap<account address, (account nonce, balance)>
 }
@@ -22,3 +22,13 @@ impl State{
         self.accounts.contains_key(addr)
     }
 }
+impl fmt::Display for State{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f,"total size of accounts {}\n",self.accounts.len());
+        for (addr,(nonce,balance)) in self.accounts.iter(){
+            write!(f,"addr is {}\n balance is {}\n",addr,balance);
+        }
+        Ok(())
+    }
+}
+

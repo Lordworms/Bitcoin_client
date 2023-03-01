@@ -1,14 +1,17 @@
+use crossbeam::Receiver;
 use log::info;
 use rand::Rng;
 use serde::{Serialize,Deserialize};
 use ring::signature::{Ed25519KeyPair, Signature, KeyPair, VerificationAlgorithm, EdDSAParameters, ED25519, UnparsedPublicKey};
 use crate::crypto::hash::{H256, Hashable};
-
+use crate::api::miner::ControlSignal;
+use crate::api::miner::OperatingState;
 use crate::network::peer;
 use crate::network::server::Handle as ServerHandle;
 use crate::transaction;
 use crate::transaction::transaction::{generate_random_signed_transaction_with_key, SignedTransaction, Transaction};
 use std::ops::Add;
+use std::sync::atomic::Ordering;
 use std::thread;
 use std::time;
 use std::sync::{Arc, Mutex};
@@ -16,7 +19,7 @@ use crate::basic::mempool::Mempool;
 use crate::network::message::Message;
 use crate::blockchain::blockchain::{Blockchain,Blockorigin};
 use crate::api::address::H160 as Address;
-
+use crate::api::miner::END_GENERATOR;
 pub struct TransactionGenerator {
     server: ServerHandle,
     mempool: Arc<Mutex<Mempool>>,
@@ -29,7 +32,7 @@ impl TransactionGenerator {
         server: &ServerHandle,
         mempool: &Arc<Mutex<Mempool>>,
         blockchain: &Arc<Mutex<Blockchain>>,
-        controlled_keypair: Ed25519KeyPair
+        controlled_keypair: Ed25519KeyPair,
     ) -> TransactionGenerator {
         TransactionGenerator {
             server: server.clone(),
@@ -45,10 +48,9 @@ impl TransactionGenerator {
             log::warn!("Transaction Generator exited");
         });
     }
-
     /// Generate random transactions and send them to the server
     fn generation_loop(&self) {
-        const INTERVAL_MILLISECONDS: u64 = 3000; // how quickly to generate transactions
+        const INTERVAL_MILLISECONDS: u64 = 700; // how quickly to generate transactions
         const TRX_LIM:usize=100;
         let mut trans_cnt:usize=1;
         //initiate account
@@ -58,14 +60,19 @@ impl TransactionGenerator {
             let addr_raw:[u8;20]=[i;20];
             account_vec.push(Address::new(addr_raw));
         }
+        println!("start to generate loop!\n");
+        while END_GENERATOR.load(Ordering::SeqCst){
+
+        }
         loop {
             let interval = time::Duration::from_millis(INTERVAL_MILLISECONDS);
             thread::sleep(interval);
-            if trans_cnt==TRX_LIM{
+            if END_GENERATOR.load(Ordering::SeqCst){
                 break;
             }
             let mut rng = rand::thread_rng();
             let blockchain=self.blockchain.lock().unwrap();
+            let mut mempool=self.mempool.lock().unwrap();
             let now_state=blockchain.get_tip_state();
             let accounts=now_state.get_accounts();
             let sender_id=rng.gen_range(0, accounts.len());
@@ -83,19 +90,19 @@ impl TransactionGenerator {
                 value,
                 nonce,
             };
-            
             let transaction=SignedTransaction::from_raw(trans_raw,&self.controlled_keypair);
-            //check validation
-           
-
-            let mut mempool=self.mempool.lock().unwrap();
-            let trans_hash=transaction.hash();
-            mempool.insert(transaction);
-            let trans_vec=vec![trans_hash];
-            info!("generate a new transaction and broadcast to others! the new total number of transaction is {}\n",trans_cnt);
-            info!("the total size of mempool is {}\n",mempool.get_size());
-            self.server.broadcast(Message::NewTransactionHashes(trans_vec));
-            trans_cnt+=1;
+            if transaction.verify_by_state(&now_state){
+                let trans_hash=transaction.hash();
+                mempool.insert(transaction);
+                let trans_vec=vec![trans_hash];
+                self.server.broadcast(Message::NewTransactionHashes(trans_vec));
+                trans_cnt+=1;
+            }
+            
+            //println!("generate a new transaction and broadcast to others! the new total number of transaction is {}\n",trans_cnt);
+            drop(mempool);
+            drop(blockchain);
+            
         }
     }
 }

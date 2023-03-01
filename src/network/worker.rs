@@ -48,7 +48,7 @@ impl Context {
             });
         }
     }
-
+    
     fn worker_loop(&self) {
         loop {
             let msg = self.msg_chan.recv().unwrap();
@@ -72,7 +72,7 @@ impl Context {
                     }
                 }
                 Message::GetBlocks(hash_vec)=>{
-                    info!("Get block hashes! {:?}",hash_vec);
+                    info!("Get block hashes!");
                     let blockchain=self.blockchain.lock().unwrap();
                     let missed_block:Vec<_>=hash_vec.iter().
                     filter(|hash| blockchain.contain_block(hash)).
@@ -82,7 +82,7 @@ impl Context {
                     }
                 }
                 Message::Blocks(block_vec)=>{
-                    info!("Get new blocks! {:?}",block_vec);
+                    info!("Get new blocks!");
                     let now_time=SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
                     let mut blockchain=self.blockchain.lock().unwrap();
                     let mut relay_hashes:Vec<H256>=Vec::new();
@@ -115,6 +115,7 @@ impl Context {
                 }
                 Message::NewTransactionHashes(hash_vec)=>{
                     let mut new_hsahes:Vec<H256>=Vec::new();
+                    let blockchain=self.blockchain.lock().unwrap();
                     let mempool=self.mempool.lock().unwrap();
                     for hash in hash_vec.iter(){
                         if !mempool.contains_hash(hash){
@@ -127,6 +128,7 @@ impl Context {
                 }
                 Message::GetTransactions(hash_vec)=>{
                     let mut transactions:Vec<SignedTransaction>=Vec::new();
+                    let blockchain=self.blockchain.lock().unwrap();
                     let mempool=self.mempool.lock().unwrap();
                     for hash in hash_vec.iter(){
                         match mempool.get_transaction(hash){
@@ -143,7 +145,7 @@ impl Context {
                     }
                 }
                 Message::Transactions(trans_vec)=>{
-                    info!("Received new transactions!,{:?}",trans_vec);
+                    info!("Received new transactions!");
                     let mut new_hashes:Vec<H256>=Vec::new();
                     let blockchain=self.blockchain.lock().unwrap();
                     let mut mempool=self.mempool.lock().unwrap();
@@ -151,12 +153,10 @@ impl Context {
                         let cur_state=blockchain.get_tip_state();
                         if trans.verify_by_state(&cur_state){
                             mempool.insert(trans.clone());
+                            info!("insert the new transaction into mempool!\n");
                             new_hashes.push(trans.hash());//get new hashes
                         }
                     }
-                }
-                _=>{
-
                 }
             }
         }

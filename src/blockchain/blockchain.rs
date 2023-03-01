@@ -41,7 +41,7 @@ impl Blockchain {
         for i in 1..6{
             let addr_raw:[u8;20]=[i;20];
             let addr=Address::new(addr_raw);
-            state.add_account(addr, 10000);   
+            state.add_account(addr, 1000*i as usize);   
         }
         let mut block_state:HashMap<H256, State>=HashMap::new();
         block_state.insert(hash,state);
@@ -61,6 +61,9 @@ impl Blockchain {
         for transaction in block.get_content(){
             let mut sender=transaction.trans_raw.sender;
             let mut receiver=transaction.trans_raw.receiver;
+            if sender==receiver{
+                continue;
+            }
             //if did not contains the sender, add the sender's infomation
             if !prev_state.contains_address(&receiver){
                 prev_state.add_account(receiver, 0);
@@ -75,6 +78,7 @@ impl Blockchain {
             }
             prev_state.add_an_account(sender, *sender_nonce+1, sender_balance-value);
             prev_state.add_an_account(receiver, *receiver_nonce, receiver_balance+value);
+            println!("{}",prev_state);
         }
         if valid {
             self.block_state.insert(block.hash(), prev_state.clone());

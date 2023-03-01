@@ -17,12 +17,14 @@ use std::time::{self, SystemTime, UNIX_EPOCH};
 use std::{thread, mem};
 use crate::network::message::Message;
 use blockchain::Blockorigin;
-enum ControlSignal {
+use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
+pub static END_GENERATOR:AtomicBool=AtomicBool::new(true);
+pub enum ControlSignal {
     Start(u64), // the number controls the lambda of interval between block generation
     Exit,
 }
 
-enum OperatingState {
+pub enum OperatingState {
     Paused,
     Run(u64),
     ShutDown,
@@ -89,29 +91,37 @@ impl Context {
                 self.miner_loop();
             })
             .unwrap();
-        info!("Miner initialized into paused mode");
+        println!("Miner initialized into paused mode");
     }
 
     fn handle_control_signal(&mut self, signal: ControlSignal) {
         match signal {
             ControlSignal::Exit => {
-                info!("Miner shutting down");
+                println!("Miner shutting down");
                 self.operating_state = OperatingState::ShutDown;
                 if let Some(start_time)=self.start_time
                 {
                     let second_spent=SystemTime::now().duration_since(start_time).unwrap().as_secs_f64();
                     let mine_rate=(self.total_num_mined as f64)/second_spent;
-                    info!("Mined {} blocks in {} time and mine rate is {}",self.total_num_mined,second_spent,mine_rate);
+                    println!("Mined {} blocks in {} time and mine rate is {}",self.total_num_mined,second_spent,mine_rate);
                     let blockchain=self.blockchain.lock().unwrap();
-                    info!("Now blockchain has {} blocks",blockchain.block_size());
+                    let mempool=self.mempool.lock().unwrap();
+                    println!("Now blockchain has {} blocks",blockchain.block_size()-1);
                     let longest_chain=blockchain.all_blocks_in_longest_chain();
-                    info!("the longest chain is {:?},it has {} blcoks",longest_chain,longest_chain.len());
-                    info!("average block size is {}",blockchain.average_size());
-                    info!("delay for every block {:?}",blockchain.all_block_delay());
+                    println!("the longest chain is {:?},it has {} blcoks",longest_chain,longest_chain.len()-1);
+                    println!("average block size is {}",blockchain.average_size());
+                    println!("delay for every block {:?}",blockchain.all_block_delay());
+                    let now_state=blockchain.get_tip_state();
+                    println!("the mempool has {}",mempool.get_size());
+                    //println!("{:?}",mempool.hash_to_transaction);
+                    println!("start to print now_state!");
+                    println!("{}",now_state);
+                    END_GENERATOR.fetch_or(true, Ordering::SeqCst);
                 }
             }
             ControlSignal::Start(i) => {
-                info!("Miner starting in continuous mode with lambda {}", i);
+                println!("Miner starting in continuous mode with lambda {}", i);
+                END_GENERATOR.store(false, Ordering::SeqCst);
                 self.operating_state = OperatingState::Run(i);
                 if self.start_time==None{
                     self.start_time=Some(SystemTime::now());
@@ -150,12 +160,9 @@ impl Context {
                     let interval = time::Duration::from_micros(i as u64);
                     thread::sleep(interval);
                 }
+                let mut blockchain=self.blockchain.lock().unwrap();
                 let mut mempool=self.mempool.lock().unwrap();
                 //do if the mempool has 3 or more transactions
-                if mempool.get_size()<3{
-                    continue;
-                }
-                let mut blockchain=self.blockchain.lock().unwrap();
                 let parent=blockchain.tip();
                 let timestamp=SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
                 let mut data:Vec<H256>=vec![];
@@ -175,11 +182,13 @@ impl Context {
                         data.push(hash.clone());
                     }
                     else {
-                        info!("transaction verify failed!\n");
+                        //println!("transaction verify failed!\n");
                     }
                 }
                 if data.len()<3{
-                    info!("data length is less than 3\n");
+                    //debug!("data length is less than 3\n");
+                    drop(blockchain);
+                    drop(mempool);
                     continue;
                 }
                 let merkle_root=MerkleTree::new(&data).root();
@@ -201,11 +210,13 @@ impl Context {
                     debug!("mined a new block,now the block number is {}",self.total_num_mined);
                     blockchain.insert(&new_block);
                     self.total_num_mined+=1;
-                    info!("Mined a new block {:?},the total number is {}",new_block,self.total_num_mined); 
+                    println!("Mined a new block {:?},the total number is {}",new_block,self.total_num_mined); 
                     self.server.broadcast(Message::NewBlockHashes(vec![new_block.hash()]));
                     mempool.remove_transaction(transaction_copy);
                     blockchain.hash_to_origin.insert(new_block.hash(), Blockorigin::Mined);
                 }
+                drop(mempool);
+                drop(blockchain);
             }
         }
     }

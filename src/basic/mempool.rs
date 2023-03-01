@@ -1,7 +1,8 @@
 use crate::transaction::transaction::SignedTransaction;
 use std::collections::HashMap;
 use crate::crypto::hash::{H256, Hashable};
-
+use crate::basic::state::State;
+pub static TERMINATE_THREAD:i8=0;
 /// Store all the received valid transactions which have not been included in the blockchain yet.
 pub struct Mempool {
     // TODO Optional: you may use other data structures if you wish.
@@ -35,6 +36,17 @@ impl Mempool {
             if self.contains_hash(&trans.hash()){
                 self.hash_to_transaction.remove(&trans.hash());
             }
+        }
+    }
+    pub fn check_valid(&mut self,now_state:&State){
+        let mut del_vec:Vec<H256>=Vec::new();
+        for (hash,transaction) in self.hash_to_transaction.iter(){
+            if !transaction.verify_by_state(&now_state){
+                del_vec.push(hash.clone());
+            }
+        }   
+        for hash in del_vec.iter(){
+            self.hash_to_transaction.remove(&hash);
         }
     }
     /// Remove a random transaction from the mempool and return it (or `None` if it is empty)
